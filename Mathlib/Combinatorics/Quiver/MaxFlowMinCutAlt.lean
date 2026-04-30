@@ -1,3 +1,8 @@
+/-
+Copyright (c) 2026 "ADD NAMES". All rights reserved.
+Released under Apache 2.0 license as described in the file LICENSE.
+Authors: "ADD NAMES"
+-/
 import Mathlib.Algebra.Order.BigOperators.Group.Finset
 import Mathlib.Data.Real.Basic
 import Mathlib.Data.Set.Finite.Basic
