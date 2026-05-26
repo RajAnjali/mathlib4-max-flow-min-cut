@@ -1138,7 +1138,7 @@ def Q_FlowNetwork_to_Z {V : Type*} [Fintype V] (G : FlowNetwork V ℚ) : FlowNet
     simp only [Nat.cast_prod, ge_iff_le, Rat.num_nonneg]
     exact mul_nonneg Dpos this
 
-/-- There exist a maximum flow and a minimum cut with equal value (ℚ version). -/
+/-- For a rational flow network setting, there is a flow that attains the maximum flow -/
 lemma ex_max_flow_Q {V : Type*} [Fintype V] (G : FlowNetwork V ℚ) :
     ∃ F : RelaxedFlow ℚ G.toSTVertices, IsMaxFlow F := by
   let D : ℕ := ∏ u : V, ∏ v : V, (G.c u v).den
@@ -1146,8 +1146,9 @@ lemma ex_max_flow_Q {V : Type*} [Fintype V] (G : FlowNetwork V ℚ) :
   let GZ := Q_FlowNetwork_to_Z G
   obtain ⟨FZ, ⟨C, ⟨hZ, ⟨_, FZeqC⟩⟩⟩⟩ := ex_max_flow_min_cut_Z GZ
   use cMulFlow G.toSTVertices (Z_flow_to_Q GZ FZ) (1/D : ℚ) (by simp)
-  constructor
-  · simp [ValidFlow, cMulFlow, Z_flow_to_Q]
+  apply @max_flow_of_flow_value_eq_cut _ ℚ  _ _ _ _ _ C (cMulFlow G.toSTVertices
+    (Z_flow_to_Q GZ FZ) (1/D : ℚ) (by simp))
+  · simp only [ValidFlow, cMulFlow, one_div, Z_flow_to_Q]
     intro u v
     have FZle := hZ.1 u v
     have : (Q_FlowNetwork_to_Z G).c u v = D * (G.c u v) := by
@@ -1156,13 +1157,12 @@ lemma ex_max_flow_Q {V : Type*} [Fintype V] (G : FlowNetwork V ℚ) :
       have hz' : ((↑D) * G.c u v).den = 1 := by
         rw [hz]
         norm_num
-      show ↑(↑D * G.c u v).num = ↑D * G.c u v
       have : (↑D * G.c u v).num = ↑D * G.c u v := by
         obtain ⟨z, hz⟩ := mul_divs_eq_int G u v
         rw [hz]
         simp
       rw [this]
-    simp [this]
+    simp only [ge_iff_le]
     trans (↑D)⁻¹ * GZ.c u v
     · apply mul_le_mul
       · exact Rat.le_refl
@@ -1170,7 +1170,6 @@ lemma ex_max_flow_Q {V : Type*} [Fintype V] (G : FlowNetwork V ℚ) :
       · simp [FZ.nonneg_flow]
       · simp
     · simp_rw [GZ, Q_FlowNetwork_to_Z]
-      show (↑D)⁻¹ * ↑(↑D * G.c u v).num ≤ G.c u v
       have : (↑D * G.c u v).num = ↑D * G.c u v := by
         obtain ⟨z, hz⟩ := mul_divs_eq_int G u v
         rw [hz]
@@ -1182,11 +1181,58 @@ lemma ex_max_flow_Q {V : Type*} [Fintype V] (G : FlowNetwork V ℚ) :
         intro con
         linarith
       simp [this]
-  · by_contra h
-    simp at h
-    obtain ⟨F', hF', conmaxF'⟩ := h
-    --mul by D and contradict hZ
-    sorry
+  · have : ((1/D) * @cutCap _ _ _ _ _ GZ C : ℚ) = (@cutCap _ _ _ _ _ G C : ℚ) := by
+      simp_rw [cutCap, outgoing_cut_f, GZ, Q_FlowNetwork_to_Z]
+      have : (∏ u, ∏ v, (G.c u v).den) = D := by rfl
+      rw [this]
+      have hcap : ∀ x x_1, (((↑D : ℚ) * G.c x x_1).num : ℚ) = (↑D : ℚ) * G.c x x_1 := by
+          intro x x_1
+          obtain ⟨z, hz⟩ := mul_divs_eq_int G x x_1
+          rw [hz]
+          simp
+      simp only [one_div, subset_univ, sum_sdiff_eq_sub, sum_sub_distrib, Int.cast_sub,
+        Int.cast_sum, hcap]
+      simp_rw [mul_sub, mul_sum]
+      have : ∑ x ∈ C.S, ∑ i, (↑D)⁻¹ * (↑D * G.c x i) = ∑ x ∈ C.S, ∑ i, G.c x i := by
+        calc
+        ∑ x ∈ C.S, ∑ i, (↑D)⁻¹ * (↑D * G.c x i) = ∑ x ∈ C.S, ∑ i, (↑D)⁻¹ * ↑D * G.c x i := by
+          simp [mul_assoc]
+        _ = ∑ x ∈ C.S, ∑ i, G.c x i := by
+          rw [Rat.inv_mul_cancel]
+          · simp only [one_mul]
+          · intro conD
+            have : (D : ℚ) = 0 := by simp [conD]
+            linarith
+      rw [this]
+      have : ∑ x ∈ C.S, ∑ i ∈ C.S, (↑D)⁻¹ * (↑D * G.c x i) = ∑ x ∈ C.S, ∑ i ∈ C.S, G.c x i := by
+        calc
+        ∑ x ∈ C.S, ∑ i ∈ C.S, (↑D)⁻¹ * (↑D * G.c x i) = ∑ x ∈ C.S, ∑ i ∈ C.S, (↑D)⁻¹ * ↑D * G.c x i
+          := by simp [mul_assoc]
+        _ = ∑ x ∈ C.S, ∑ i ∈ C.S, G.c x i := by
+          rw [Rat.inv_mul_cancel]
+          · simp only [one_mul]
+          · intro conD
+            have : (D : ℚ) = 0 := by simp [conD]
+            linarith
+      rw [this]
+    simp_rw [←this, flowValue, outgoing_cut_f, cMulFlow, Z_flow_to_Q, div_eq_mul_inv, one_mul]
+    simp_rw [←Finset.mul_sum]
+    simp only [subset_univ, sum_sdiff_eq_sub, sum_singleton, sum_sub_distrib, mul_eq_mul_left_iff,
+      inv_eq_zero, Nat.cast_eq_zero]
+    have : ↑(FZ.f G.s G.s) = 0 := by
+      have := FZ.no_edges_in_source G.s
+      simp only [Q_FlowNetwork_to_Z, Lean.Elab.WF.paramLet, Nat.cast_prod, GZ] at this
+      exact this
+    simp only [this, Int.cast_zero, sub_zero]
+    left
+    rw [←FZeqC]
+    simp [flowValue, outgoing_cut_f, GZ, Q_FlowNetwork_to_Z, this]
+
+/-- There exist a maximum flow and a minimum cut with equal value (ℚ version). -/
+lemma ex_max_flow_min_cut_Q {V : Type*} [Fintype V] (G : FlowNetwork V ℚ) :
+    ∃ (F : RelaxedFlow ℚ G.toSTVertices), ∃ C : Cut G.toSTVertices,
+      IsMaxFlow F ∧ IsMinCut G C ∧ flowValue G.toSTVertices F = cutCap C :=
+  ex_max_flow_min_cut G <| ex_max_flow_Q G
 
 -- ============================================================
 -- MAX FLOW MIN CUT THEOREM (natural numbers edition)
@@ -1324,3 +1370,9 @@ theorem ex_undirected_max_flow_min_cut_R {V : Type*} [Fintype V] (G : Undirected
     ∃ F C, is_max_undirected_flow F ∧ IsMinCut G.toFlowNetwork C ∧
       flowValue G.toSTVertices F = cutCap C := ex_undirected_max_flow_min_cut G <|
         ex_max_flow_min_cut_R G.toFlowNetwork
+
+/-- An equivalent for the max flow min cut theorem for ℚ for undirected flow networks -/
+theorem ex_undirected_max_flow_min_cut_Q {V : Type*} [Fintype V] (G : Undirected_FlowNetwork V ℚ) :
+    ∃ F C, is_max_undirected_flow F ∧ IsMinCut G.toFlowNetwork C ∧
+      flowValue G.toSTVertices F = cutCap C := ex_undirected_max_flow_min_cut G <|
+        ex_max_flow_min_cut_Q G.toFlowNetwork
