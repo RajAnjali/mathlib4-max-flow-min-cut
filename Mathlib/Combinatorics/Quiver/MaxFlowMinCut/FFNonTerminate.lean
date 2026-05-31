@@ -320,8 +320,6 @@ lemma rawPath1_has_edge (u v : FFVert) :
     Nat.reduceAdd, Nat.add_one_sub_one]
   constructor
   · rintro ⟨i, hi, rfl, rfl⟩
-    -- Since hi : i < 3, it must be 0, 1, or 2. omega splits this perfectly.
-    have h_cases : i = 0 ∨ i = 1 ∨ i = 2 := by omega
     grind
   · rintro (⟨rfl, rfl⟩ | ⟨rfl, rfl⟩ | ⟨rfl, rfl⟩)
     · use 0; simp
@@ -377,6 +375,7 @@ lemma rawPath4_has_edge (u v : FFVert) :
     · use 2; simp
     · use 3; simp
 
+/-- augmenting by g reduces the forward residual capacity by g(u,v) and increases it by g(v,u) -/
 lemma rawResCap_augment {V : Type*} [Fintype V] (G : FlowNetwork V) (f g : V → V → ℝ) (u v : V) :
     rawResCap G (rawAugment f g) u v = rawResCap G f u v - g u v + g v u := by
   unfold rawResCap rawAugment
@@ -548,6 +547,7 @@ lemma rawBottleneck_eq_formal_bottleneck {V : Type*} [Fintype V] [DecidableEq V]
   rfl
 
 open FFVert in
+/-- The residual cap after each augmentation is postive -/
 lemma expectedResCap_pos (X : ℝ) (hX : X > 2) (k : ℕ) (step : Fin 4) (p : uvPath s t)
     (h_path : p = match step with
       | 0 => rawPath2
@@ -641,7 +641,7 @@ def convertFlow {V : Type*} [Fintype V] {G : FlowNetwork V}
   }
 
 lemma ffRawFlows_valid_step (X : ℝ) (hX : X > 2) (n : ℕ) :
-  rawPathValid (FFNetwork X hX) (ffRawFlows X hX n) (cycleChoice n) := by
+    rawPathValid (FFNetwork X hX) (ffRawFlows X hX n) (cycleChoice n) := by
   rcases ffRawFlows_invariant X hX n with
     rfl | ⟨m, rfl, h⟩ | ⟨m, rfl, h⟩ | ⟨m, rfl, h⟩ | ⟨m, rfl, h⟩
   · intro i h_len
@@ -652,33 +652,24 @@ lemma ffRawFlows_valid_step (X : ℝ) (hX : X > 2) (n : ℕ) :
     · change (FFNetwork X hX).c FFVert.c FFVert.t - 0 + 0 > 0; simp [FFNetwork]; linarith [hX]
   · intro i h_len
     have h_path : cycleChoice (4 * m + 1) = rawPath2 := by
-      have h_def : cycleChoice (4 * m + 1) = match (4 * m) % 4 with
-        | 0 => rawPath2 | 1 => rawPath3 | 2 => rawPath2 | _ => rawPath4 := rfl
-      rw [h_def]; norm_num
-    have heq := h (cycleChoice (4 * m + 1)).verts[i] (cycleChoice (4 * m + 1)).verts[i+1]
-    rw [heq]
-    exact expectedResCap_pos X hX _ 0 _ h_path i h_len
+      have : (4 * m) % 4 = 0 := by omega
+      simp [cycleChoice, this]
+    rw [h _ _]; exact expectedResCap_pos X hX _ 0 _ h_path i h_len
   · intro i h_len
     have h_path : cycleChoice (4 * m + 2) = rawPath3 := by
-      have h_def : cycleChoice (4 * m + 2) = match (4 * m + 1) % 4 with
-        | 0 => rawPath2 | 1 => rawPath3 | 2 => rawPath2 | _ => rawPath4 := rfl
-      rw [h_def]; norm_num
-    rw [h _ _]
-    exact expectedResCap_pos X hX _ 1 _ h_path i h_len
+      have : (4 * m + 1) % 4 = 1 := by omega
+      simp [cycleChoice, this]
+    rw [h _ _]; exact expectedResCap_pos X hX _ 1 _ h_path i h_len
   · intro i h_len
     have h_path : cycleChoice (4 * m + 3) = rawPath2 := by
-      have h_def : cycleChoice (4 * m + 3) = match (4 * m + 2) % 4 with
-        | 0 => rawPath2 | 1 => rawPath3 | 2 => rawPath2 | _ => rawPath4 := rfl
-      rw [h_def]; norm_num
-    rw [h _ _]
-    exact expectedResCap_pos X hX _ 2 _ h_path i h_len
+      have : (4 * m + 2) % 4 = 2 := by omega;
+      simp [cycleChoice, this]
+    rw [h _ _]; exact expectedResCap_pos X hX _ 2 _ h_path i h_len
   · intro i h_len
     have h_path : cycleChoice (4 * m + 4) = rawPath4 := by
-      have h_def : cycleChoice (4 * m + 4) = match (4 * m + 3) % 4 with
-        | 0 => rawPath2 | 1 => rawPath3 | 2 => rawPath2 | _ => rawPath4 := rfl
-      rw [h_def]; norm_num
-    rw [h _ _]
-    exact expectedResCap_pos X hX _ 3 _ h_path i h_len
+      have : (4 * m + 3) % 4 = 3 := by omega
+      simp [cycleChoice, this]
+    rw [h _ _]; exact expectedResCap_pos X hX _ 3 _ h_path i h_len
 
 lemma augPath_toFlow_eq_rawPathFlow (X : ℝ) (hX : X > 2) (n : ℕ)
     (F : RelaxedFlow (FFNetwork X hX).toSTVertices)
