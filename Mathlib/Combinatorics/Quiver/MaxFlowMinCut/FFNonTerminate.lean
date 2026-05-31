@@ -380,11 +380,6 @@ lemma rawPath4_has_edge (u v : FFVert) :
 lemma rawResCap_augment {V : Type*} [Fintype V] (G : FlowNetwork V) (f g : V → V → ℝ) (u v : V) :
     rawResCap G (rawAugment f g) u v = rawResCap G f u v - g u v + g v u := by
   unfold rawResCap rawAugment
-  have h (x : ℝ) : - max x 0 + max (-x) 0 = -x := by
-    rcases le_total x 0 with hx | hx
-    · rw [max_eq_right hx, max_eq_left (by linarith)]; linarith
-    · rw [max_eq_left hx, max_eq_right (by linarith)]; linarith
-  have h_eq := h (f u v + g u v - f v u - g v u)
   grind
 
 lemma rawBottleneck_path2_1 (X : ℝ) (hX : X > 2) (f : FFVert → FFVert → ℝ) (k : ℕ)
@@ -633,6 +628,7 @@ theorem step_flow_value_eq_bottleneck
   intro augPath
   exact (bottleneck_eq_flow augPath).symm
 
+/-- Idk why this is needed, but otherwise Lean will complain when you add flows -/
 def convertFlow {V : Type*} [Fintype V] {G : FlowNetwork V}
   {F : RelaxedFlow G.toSTVertices} {hF : ValidFlow G F}
   (p_flow : RelaxedFlow (ResidualNetwork G F hF).toSTVertices) : RelaxedFlow G.toSTVertices :=
@@ -690,12 +686,7 @@ lemma augPath_toFlow_eq_rawPathFlow (X : ℝ) (hX : X > 2) (n : ℕ)
     (augPath : augmentingPath (ResidualNetwork (FFNetwork X hX) F h_valid))
     (h_path : augPath.touvPath = cycleChoice n) :
     (convertFlow augPath.toFlow).f = rawPathFlow (FFNetwork X hX) F.f (cycleChoice n) := by
-  have eq_b := rawBottleneck_eq_formal_bottleneck (FFNetwork X hX) F h_valid augPath.touvPath
-  unfold convertFlow augmentingPath.toFlow pathFlow rawPathFlow
-  ext u v
-  dsimp only
   rw [← h_path]
-  rw [eq_b]
   rfl
 
 structure FFFlowState (X : ℝ) (hX : X > 2) (n : ℕ) where
@@ -703,6 +694,7 @@ structure FFFlowState (X : ℝ) (hX : X > 2) (n : ℕ) where
   h_valid : ValidFlow (FFNetwork X hX) F
   h_eq    : F.f = ffRawFlows X hX n
 
+/-- You can see this as the definition of Ford-Fulkerson -/
 noncomputable def sequence_of_flows (X : ℝ) (hX : X > 2) : (n : ℕ) → FFFlowState X hX n
 | 0 => ⟨trivial_flow _, valid_zero_flow _, rfl⟩
 | n + 1 =>
@@ -732,10 +724,7 @@ noncomputable def sequence_of_flows (X : ℝ) (hX : X > 2) : (n : ℕ) → FFFlo
     change max (Fn.f u v + (convertFlow augPath.toFlow).f u v
                   - Fn.f v u - (convertFlow augPath.toFlow).f v u) 0 = _
     rw [h1, h2, h_Fn_eq]
-    have h_step : ffRawFlows X hX (n + 1) u v = max (ffRawFlows X hX n u v + rawPathFlow
-      (FFNetwork X hX) (ffRawFlows X hX n) (cycleChoice n) u v - ffRawFlows X hX n v u - rawPathFlow
-      (FFNetwork X hX) (ffRawFlows X hX n) (cycleChoice n) v u) 0 := rfl
-    rw [h_step]
+    noncomm_ring
   ⟩
 
 noncomputable def ffFlowValues (X : ℝ) (hX : X > 2) : ℕ → ℝ :=
@@ -750,7 +739,7 @@ lemma geom_series_eval : (∑' i : ℕ, 2 * ρ ^ (i + 1)) = (2 * ρ) * (1 - ρ)�
   have h_rewrite : (fun (i : ℕ) => 2 * ρ ^ (i + 1)) = fun i => (2 * ρ) * ρ ^ i := by
     ring_nf
   rw [h_rewrite]
-  -- Pull the constant (2 * ρ) out of the topological sum
+  -- Pull the constant (2 * ρ) out
   rw [tsum_mul_left]
   -- Apply the standard geometric series formula for ρ < 1
   have h_geom : (∑' i : ℕ, ρ ^ i) = (1 - ρ)⁻¹ := by
@@ -807,6 +796,7 @@ lemma ffMaxFlow_value (X : ℝ) (hX : X > 2) :
   simp [Finset.sum_insert, Finset.mem_insert, Finset.mem_singleton]
   ring
 
+/-- Our example flow will mean the max flow is at leat our example flow -/
 lemma maxFlow_ge_ffMaxFlow (X : ℝ) (hX : X > 2)
     (F : RelaxedFlow (FFNetwork X hX).toSTVertices)
     (hF : is_max_flow F) :
@@ -847,7 +837,6 @@ lemma ffFlowValues_eq_expected (X : ℝ) (hX : X > 2) (n : ℕ) :
   ffFlowValues X hX n = expectedFlowValues X hX n := by
   induction n with
   | zero =>
-    change Flow_value _ (trivial_flow _) = 0
     exact zero_trivial_flow _
   | succ n ih =>
     unfold ffFlowValues expectedFlowValues
@@ -858,8 +847,6 @@ lemma ffFlowValues_eq_expected (X : ℝ) (hX : X > 2) (n : ℕ) :
     congr 1
     rw [Flow_value_convertFlow_eq_bottleneck X hX
       (sequence_of_flows X hX n).F (sequence_of_flows X hX n).h_valid]
-    change uvPath.bottleneck (ResidualNetwork (FFNetwork X hX) (sequence_of_flows X hX n).F _ )
-      (cycleChoice n) _ = _
     have heq := rawBottleneck_eq_formal_bottleneck (FFNetwork X hX) (sequence_of_flows X hX n).F
       (sequence_of_flows X hX n).h_valid (cycleChoice n)
     refine Eq.trans heq.symm ?_
@@ -873,101 +860,6 @@ lemma rawBottleneck_n0 (X : ℝ) (hX : X > 2) :
         List.zipWith, List.foldl]
   linarith [hX]
 
-lemma rawBottleneck_4m1 (X : ℝ) (hX : X > 2) (m : ℕ) :
-    rawBottleneck (FFNetwork X hX) (ffRawFlows X hX (4 * m + 1)) (cycleChoice (4 * m + 1)) =
-    ρ ^ (2 * m + 1) := by
-  have h_path : cycleChoice (4 * m + 1) = rawPath2 := by
-    simp [cycleChoice]
-  rw [h_path]
-  have hc := ffState_induction X hX m
-  exact rawBottleneck_path2_1 X hX _ _ hc
-
-lemma rawBottleneck_4m2 (X : ℝ) (hX : X > 2) (m : ℕ) :
-    rawBottleneck (FFNetwork X hX) (ffRawFlows X hX (4 * m + 2)) (cycleChoice (4 * m + 2)) =
-    ρ ^ (2 * m + 1) := by
-  have h_path : cycleChoice (4 * m + 2) = rawPath3 := by
-    simp [cycleChoice]
-  rw [h_path]
-  have hc : cycleInvariant X hX (ffRawFlows X hX (4 * m + 2)) (2 * m + 1) 1 := by
-    have h0 := ffState_induction X hX m
-    have h_path2 : cycleChoice (4 * m + 1) = rawPath2 := by simp [cycleChoice]
-    have fold : rawAugment (ffRawFlows X hX (4 * m + 1))
-        (rawPathFlow (FFNetwork X hX) (ffRawFlows X hX (4 * m + 1)) rawPath2) =
-        ffRawFlows X hX (4 * m + 2) := by
-      change _ = rawAugment (ffRawFlows X hX (4 * m + 1))
-          (rawPathFlow (FFNetwork X hX) (ffRawFlows X hX (4 * m + 1)) (cycleChoice (4 * m + 1)))
-      rw [h_path2]
-    rw [← fold]
-    exact step0_to_1 X hX _ _ (by omega) h0
-  exact rawBottleneck_path3 X hX _ _ (by omega) hc
-
-lemma rawBottleneck_4m3 (X : ℝ) (hX : X > 2) (m : ℕ) :
-    rawBottleneck (FFNetwork X hX) (ffRawFlows X hX (4 * m + 3)) (cycleChoice (4 * m + 3)) =
-    ρ ^ (2 * m + 2) := by
-  have h_path : cycleChoice (4 * m + 3) = rawPath2 := by
-    simp [cycleChoice]
-  rw [h_path]
-  have hc2 : cycleInvariant X hX (ffRawFlows X hX (4 * m + 3)) (2 * m + 1) 2 := by
-    have h1 : cycleInvariant X hX (ffRawFlows X hX (4 * m + 2)) (2 * m + 1) 1 := by
-      have h0 := ffState_induction X hX m
-      have h_path2 : cycleChoice (4 * m + 1) = rawPath2 := by simp [cycleChoice]
-      have fold : rawAugment (ffRawFlows X hX (4 * m + 1))
-          (rawPathFlow (FFNetwork X hX) (ffRawFlows X hX (4 * m + 1)) rawPath2) =
-          ffRawFlows X hX (4 * m + 2) := by
-        change _ = rawAugment (ffRawFlows X hX (4 * m + 1))
-            (rawPathFlow (FFNetwork X hX) (ffRawFlows X hX (4 * m + 1)) (cycleChoice (4 * m + 1)))
-        rw [h_path2]
-      rw [← fold]; exact step0_to_1 X hX _ _ (by omega) h0
-    have h_path3 : cycleChoice (4 * m + 2) = rawPath3 := by simp [cycleChoice]
-    have fold : rawAugment (ffRawFlows X hX (4 * m + 2))
-        (rawPathFlow (FFNetwork X hX) (ffRawFlows X hX (4 * m + 2)) rawPath3) =
-        ffRawFlows X hX (4 * m + 3) := by
-      change _ = rawAugment (ffRawFlows X hX (4 * m + 2))
-          (rawPathFlow (FFNetwork X hX) (ffRawFlows X hX (4 * m + 2)) (cycleChoice (4 * m + 2)))
-      rw [h_path3]
-    rw [← fold]; exact step1_to_2 X hX _ _ (by omega) h1
-  have := rawBottleneck_path2_2 X hX _ _ (by omega) hc2
-  convert this using 2
-
-lemma rawBottleneck_4m4 (X : ℝ) (hX : X > 2) (m : ℕ) :
-    rawBottleneck (FFNetwork X hX) (ffRawFlows X hX (4 * m + 4)) (cycleChoice (4 * m + 4)) =
-    ρ ^ (2 * m + 2) := by
-  have h_path : cycleChoice (4 * m + 4) = rawPath4 := by
-    simp [cycleChoice]
-  rw [h_path]
-  -- Need step-3 invariant
-  have hc3 : cycleInvariant X hX (ffRawFlows X hX (4 * m + 4)) (2 * m + 1) 3 := by
-    -- Build up through steps 0->1->2->3
-    have h0 := ffState_induction X hX m
-    have h1 : cycleInvariant X hX (ffRawFlows X hX (4 * m + 2)) (2 * m + 1) 1 := by
-      have h_path2 : cycleChoice (4 * m + 1) = rawPath2 := by simp [cycleChoice]
-      have fold : rawAugment (ffRawFlows X hX (4 * m + 1))
-          (rawPathFlow (FFNetwork X hX) (ffRawFlows X hX (4 * m + 1)) rawPath2) =
-          ffRawFlows X hX (4 * m + 2) := by
-        change _ = rawAugment (ffRawFlows X hX (4 * m + 1))
-            (rawPathFlow (FFNetwork X hX) (ffRawFlows X hX (4 * m + 1)) (cycleChoice (4 * m + 1)))
-        rw [h_path2]
-      rw [← fold]; exact step0_to_1 X hX _ _ (by omega) h0
-    have h2 : cycleInvariant X hX (ffRawFlows X hX (4 * m + 3)) (2 * m + 1) 2 := by
-      have h_path3 : cycleChoice (4 * m + 2) = rawPath3 := by simp [cycleChoice]
-      have fold : rawAugment (ffRawFlows X hX (4 * m + 2))
-          (rawPathFlow (FFNetwork X hX) (ffRawFlows X hX (4 * m + 2)) rawPath3) =
-          ffRawFlows X hX (4 * m + 3) := by
-        change _ = rawAugment (ffRawFlows X hX (4 * m + 2))
-            (rawPathFlow (FFNetwork X hX) (ffRawFlows X hX (4 * m + 2)) (cycleChoice (4 * m + 2)))
-        rw [h_path3]
-      rw [← fold]; exact step1_to_2 X hX _ _ (by omega) h1
-    have h_path2b : cycleChoice (4 * m + 3) = rawPath2 := by simp [cycleChoice]
-    have fold : rawAugment (ffRawFlows X hX (4 * m + 3))
-        (rawPathFlow (FFNetwork X hX) (ffRawFlows X hX (4 * m + 3)) rawPath2) =
-        ffRawFlows X hX (4 * m + 4) := by
-      change _ = rawAugment (ffRawFlows X hX (4 * m + 3))
-          (rawPathFlow (FFNetwork X hX) (ffRawFlows X hX (4 * m + 3)) (cycleChoice (4 * m + 3)))
-      rw [h_path2b]
-    rw [← fold]; exact step2_to_3 X hX _ _ (by omega) h2
-  have := rawBottleneck_path4 X hX _ _ (by omega) hc3
-  convert this using 2
-
 /-- The explicit bottleneck for ANY arbitrary step n -/
 noncomputable def explicitBottleneck (n : ℕ) : ℝ :=
   if n = 0 then 1 else ρ ^ ((n + 1) / 2) -- < integer div
@@ -976,38 +868,32 @@ noncomputable def explicitBottleneck (n : ℕ) : ℝ :=
 noncomputable def explicitFlowSum (N : ℕ) : ℝ :=
   ∑ i ∈ Finset.range N, explicitBottleneck i
 
-/-- Step 1: Prove the individual sequence terms match for any i -/
+/-- Prove the individual sequence terms match for any i -/
 lemma rawBottleneck_eq_explicitBottleneck (X : ℝ) (hX : X > 2) (i : ℕ) :
     rawBottleneck (FFNetwork X hX) (ffRawFlows X hX i) (cycleChoice i) =
     explicitBottleneck i := by
-  rcases i with _ | i'
-  · simp only [explicitBottleneck, ↓reduceIte]
+  rcases ffRawFlows_invariant X hX i with
+    rfl | ⟨m, rfl, h⟩ | ⟨m, rfl, h⟩ | ⟨m, rfl, h⟩ | ⟨m, rfl, h⟩
+  · rw [explicitBottleneck]
     exact rawBottleneck_n0 X hX
-  · -- Unfold explicitBottleneck and cleanly eliminate the if-branch using omega
-    rw [explicitBottleneck]
-    have h_pos : i' + 1 ≠ 0 := by omega
-    rw [if_neg h_pos]
-    -- Extract the quotient (m) and remainder (k)
-    obtain ⟨m, k, hk_ge, hk_le, heq⟩ : ∃ m k, 1 ≤ k ∧ k ≤ 4 ∧ i' + 1 = 4 * m + k := by
-      use (i' + 1 - 1) / 4, (i' + 1 - 1) % 4 + 1
-      omega
-    -- Use 'rw' instead of 'subst' since (i' + 1) is a compound expression
-    rw [heq]
-    interval_cases k
-    · have h_div : (4 * m + 1 + 1) / 2 = 2 * m + 1 := by omega
-      rw [h_div]
-      exact rawBottleneck_4m1 X hX m
-    · have h_div : (4 * m + 2 + 1) / 2 = 2 * m + 1 := by omega
-      rw [h_div]
-      exact rawBottleneck_4m2 X hX m
-    · have h_div : (4 * m + 3 + 1) / 2 = 2 * m + 2 := by omega
-      rw [h_div]
-      exact rawBottleneck_4m3 X hX m
-    · have h_div : (4 * m + 4 + 1) / 2 = 2 * m + 2 := by omega
-      rw [h_div]
-      exact rawBottleneck_4m4 X hX m
+  · -- n = 4m+1: bottleneck = ρ^(2m+1)
+    have h_path : cycleChoice (4 * m + 1) = rawPath2 := by simp [cycleChoice]
+    rw [h_path, rawBottleneck_path2_1 X hX _ _ h]
+    simp [explicitBottleneck]; grind
+  · -- n = 4m+2: bottleneck = ρ^(2m+1)
+    have h_path : cycleChoice (4 * m + 2) = rawPath3 := by simp [cycleChoice]
+    rw [h_path, rawBottleneck_path3 X hX _ _ (by omega) h]
+    simp [explicitBottleneck]; grind
+  · -- n = 4m+3: bottleneck = ρ^(2m+2)
+    have h_path : cycleChoice (4 * m + 3) = rawPath2 := by simp [cycleChoice]
+    rw [h_path, rawBottleneck_path2_2 X hX _ _ (by omega) h]
+    simp [explicitBottleneck]; grind
+  · -- n = 4m+4: bottleneck = ρ^(2m+2)
+    have h_path : cycleChoice (4 * m + 4) = rawPath4 := by simp [cycleChoice]
+    rw [h_path, rawBottleneck_path4 X hX _ _ (by omega) h]
+    simp [explicitBottleneck]; grind
 
-/-- Step 2: The final theorem proving the recursive sum equals the explicit sum -/
+/-- The final theorem proving the recursive sum equals the explicit sum -/
 theorem expectedFlowValues_eq_explicitFlowSum (X : ℝ) (hX : X > 2) (n : ℕ) :
     expectedFlowValues X hX n = explicitFlowSum n := by
   induction n with
@@ -1102,7 +988,7 @@ lemma geom_series_summable : Summable (fun (i : ℕ) => 2 * ρ ^ (i + 1)) := by
 lemma explicitFlowSum_odd_tendsto :
     Tendsto (fun M => explicitFlowSum (2 * M + 1)) atTop (𝓝 (1 + (2 * ρ) * (1 - ρ)⁻¹)) := by
   -- Rewrite the target using your exact odd sum formula
-  simp_rw [explicitFlowSum_odd]
+  simp only [explicitFlowSum_odd]
   -- Extract the HasSum property (which is definitionally a Tendsto)
   have h_hasSum := geom_series_summable.hasSum
   -- Substitute the exact evaluated tsum value from your earlier lemma

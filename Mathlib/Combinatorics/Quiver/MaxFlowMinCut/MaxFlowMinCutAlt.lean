@@ -997,3 +997,171 @@ theorem undirected_max_flow_min_cut' {V : Type*} [Fintype V] (G : Undirected_Flo
       · constructor
         · exact hC
         · simp [add_flow, FCeq]
+
+-- ===========================================================
+-- CYCLE/PATH DECOMPOSITION 
+-- ===========================================================
+
+noncomputable
+def imbalance {V : Type*} [Fintype V] (f : V → V → ℝ) (x : V) : ℝ := ∑ y, (f x y - f y x)
+
+def is_supply {V : Type*} [Fintype V] (f : V → V → ℝ) (x : V) : Prop := imbalance f x > 0
+
+def is_demand {V : Type*} [Fintype V] (f : V → V → ℝ) (x : V) : Prop := imbalance f x < 0
+
+def is_balanced {V : Type*} [Fintype V] (f : V → V → ℝ) (x : V) : Prop := imbalance f x = 0
+
+structure PseudoFlow (V : Type*) [Fintype V] where
+  f : V → V → ℝ
+  nonneg_flow : ∀ u v : V, f u v ≥ 0
+
+structure Circulation (V : Type*) [Fintype V] where
+  f : V → V → ℝ
+  nonneg_flow : ∀ u v : V, f u v ≥ 0
+  conservation : ∀ x : V, imbalance f x = 0
+
+structure SimpleCycle {V : Type*} [Fintype V] [DecidableEq V] (G : FlowNetwork V) where
+  verts : List V
+  nonempty : verts ≠ []
+  nodup : verts.Nodup
+  length_ge_two : verts.length ≥ 2
+  edge_valid : ∀ (i : ℕ) (h : i < verts.length - 1), G.c verts[i] verts[i+1] > 0
+  closing_edge : G.c (verts.getLast nonempty) (verts.head nonempty) > 0
+
+structure CycleFlow (V : Type*) [Fintype V] [DecidableEq V]
+    (G : FlowNetwork V) where
+  circ : Circulation V
+  cycle : SimpleCycle G
+  pos_on_cycle : ∀ (i : ℕ) (h : i < cycle.verts.length - 1),
+      circ.f cycle.verts[i] cycle.verts[i+1] > 0
+  pos_on_closing : circ.f (cycle.verts.getLast cycle.nonempty) (cycle.verts.head cycle.nonempty) > 0
+  zero_off_cycle : ∀ u v : V, circ.f u v > 0 →
+      (∃ (i : ℕ) (h : i < cycle.verts.length - 1),
+          u = cycle.verts[i] ∧
+          v = cycle.verts[i+1])
+      ∨
+      (u = cycle.verts.getLast cycle.nonempty ∧
+       v = cycle.verts.head cycle.nonempty)
+
+structure PathFlow (V : Type*) [Fintype V] [DecidableEq V] (G : FlowNetwork V) where
+  s : V
+  t : V
+  path : validuvPath G s t
+  f : V → V → ℝ
+  nonneg_flow : ∀ u v : V, f u v ≥ 0
+  pos_on_path : ∀ (i : ℕ) (h : i < path.verts.length - 1), f path.verts[i] path.verts[i+1] > 0
+  zero_off_path : ∀ u v : V, f u v > 0 →
+      ∃ (i : ℕ) (h : i < path.verts.length - 1), u = path.verts[i] ∧ v = path.verts[i+1]
+  conservation : ∀ x : V, x ≠ s → x ≠ t → ∑ y, (f x y - f y x) = 0
+
+def positiveReachable {V : Type*} [Fintype V] [DecidableEq V]
+ (G : FlowNetwork V) (f : V → V → ℝ) (u v : V) : Prop := Nonempty
+    (validuvPath { G with
+        c := fun x y => if f x y > 0 then 1 else 0
+        nonneg_capacity := by
+          intro x y
+          split_ifs <;> norm_num
+      } u v)
+
+lemma uvPath_extend {V : Type*} [Fintype V] [DecidableEq V] {G : FlowNetwork V} {u v w : V}
+  (p : validuvPath G u v) (hw_notin : w ∉ p.verts) (hedge : G.c v w > 0) :
+  Nonempty (validuvPath G u w) := by sorry
+
+lemma positiveReachable_step {V : Type*} [Fintype V] [DecidableEq V]
+    (G : FlowNetwork V) (f : V → V → ℝ) (s v w : V)
+    (hreach : positiveReachable G f s v)
+    (hflow : f v w > 0) :
+    positiveReachable G f s w := by
+  by_cases hw_in : w ∈ hreach.some.verts;
+  · sorry
+  · exact uvPath_extend ( hreach.some ) hw_in ( by simp [ hflow ] )
+
+lemma no_outflow_from_reachable {V : Type*} [Fintype V] [DecidableEq V] (G : FlowNetwork V)
+  (f : V → V → ℝ) (hnonneg : ∀ u v, f u v ≥ 0) (s v w : V) (hv : positiveReachable G f s v)
+  (hw : ¬ positiveReachable G f s w) : f v w = 0 := by
+  exact Classical.not_not.1 fun h => hw
+    ( positiveReachable_step G f s v w hv ( lt_of_le_of_ne ( hnonneg v w ) ( Ne.symm h ) ) )
+
+lemma sum_imbalance_reachable_le {V : Type*} [Fintype V] (f : V → V → ℝ)
+  (hnonneg : ∀ u v, f u v ≥ 0) : ∀ R : Finset V, (∀ v ∈ R, ∀ w ∉ R, f v w = 0) →
+  R.sum (fun v => ∑ w, (f v w - f w v)) ≤ 0 := by
+  classical
+  intro R hR
+  have h_sum_zero : ∑ v ∈ R, ∑ w,
+    (f v w - f w v) = ∑ v ∈ R, ∑ w ∈ Finset.univ \ R, (f v w - f w v) := by
+    simp +decide [ Finset.sum_sub_distrib];
+    linarith [ show ∑ x ∈ R, ∑ x_1 ∈ R, f x x_1 = ∑ x ∈ R, ∑ x_1 ∈ R, f x_1 x from Finset.sum_comm ]
+  rw [h_sum_zero];
+  exact Finset.sum_nonpos fun v hv => Finset.sum_nonpos fun w hw => by
+    rw [ hR v hv w ( Finset.mem_sdiff.mp hw |>.2 ) ] ; linarith [ hnonneg w v ] ;
+
+
+lemma exist_flow_path {V : Type*} [Fintype V] [DecidableEq V] (G : FlowNetwork V) (F : PseudoFlow V)
+ (hex : ∃ x : V, imbalance F.f x ≠ 0) (hsum_zero : ∑ x : V, imbalance F.f x = 0) :
+  ∃ s t : V, is_supply F.f s ∧ is_demand F.f t ∧ positiveReachable G F.f s t := by
+  classical
+  have hposneg :
+    (∃ s, imbalance F.f s > 0) ∧ (∃ t, imbalance F.f t < 0) := by
+    constructor
+    · by_contra h
+      push Not at h
+      have hall : ∀ x, imbalance F.f x = 0 := by
+        intro x
+        have hle : imbalance F.f x ≤ 0 := h x
+        have hge : 0 ≤ imbalance F.f x := by
+          have key : -imbalance F.f x ≤ ∑ y : V, (-imbalance F.f y) :=
+            Finset.single_le_sum (f := fun x => -imbalance F.f x)
+              (fun (i : V) _ => by linarith [h i]) (Finset.mem_univ x)
+          simp [hsum_zero] at key
+          linarith
+        linarith
+      exact (hex.choose_spec (hall _))
+    · by_contra h
+      push Not at h
+      have hall : ∀ x, imbalance F.f x = 0 := by
+        intro x
+        have hge : 0 ≤ imbalance F.f x := h x
+        have hle : imbalance F.f x ≤ 0 := by
+          have key : imbalance F.f x ≤ ∑ y : V, imbalance F.f y :=
+            Finset.single_le_sum (fun (i : V) _ => h i) (Finset.mem_univ x)
+          linarith
+        linarith
+      exact (hex.choose_spec (hall _))
+  obtain ⟨s, hs⟩ := hposneg.1
+  have hs_reach : positiveReachable G F.f s s := by
+    unfold positiveReachable
+    refine ⟨⟨⟨[s], ?_, ?_, ?_, ?_⟩, ?_⟩⟩
+    · exact List.cons_ne_nil _ _
+    · exact List.nodup_singleton s
+    · rfl
+    · rfl
+    · intro i hi; simp at hi
+  let R := Finset.univ.filter (fun v => positiveReachable G F.f s v)
+  have hs_in_R : s ∈ R := Finset.mem_filter.mpr ⟨Finset.mem_univ _, hs_reach⟩
+  have hR_closed : ∀ v ∈ R, ∀ w ∉ R, F.f v w = 0 := by
+    intro v hv w hw
+    exact no_outflow_from_reachable G F.f F.nonneg_flow s v w
+      (Finset.mem_filter.mp hv).2 (fun h => hw (Finset.mem_filter.mpr ⟨Finset.mem_univ _, h⟩))
+  have hsum_R : R.sum (fun v => ∑ w, (F.f v w - F.f w v)) ≤ 0 := by
+    refine sum_imbalance_reachable_le F.f ?_ R hR_closed
+    exact fun u v ↦ F.nonneg_flow u v
+  have hsum_imb : R.sum (imbalance F.f) ≤ 0 := by
+    convert hsum_R using 1
+  have : ∃ t' ∈ R, imbalance F.f t' < 0 := by
+    by_contra hall
+    push Not at hall
+    have hge_s : imbalance F.f s ≤ R.sum (imbalance F.f) :=
+      Finset.single_le_sum (fun i hi => hall i hi) hs_in_R
+    linarith
+  obtain ⟨t', ht'R, ht'neg⟩ := this
+  exact ⟨s, t', hs, ht'neg, (Finset.mem_filter.mp ht'R).2⟩
+
+/-- number of nonzero imbalance vertices -/
+noncomputable
+def Ψ {V : Type*} [Fintype V] (f : V → V → ℝ) : Nat :=
+  Fintype.card {x | imbalance f x ≠ 0}
+
+/-- number of edges with positive flow -/
+noncomputable
+def Φ {V : Type*} [Fintype V] (f : V → V → ℝ) : Nat :=
+  Fintype.card {p : V × V | f p.1 p.2 > 0}
