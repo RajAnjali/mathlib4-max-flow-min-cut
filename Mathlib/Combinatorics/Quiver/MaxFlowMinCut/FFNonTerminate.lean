@@ -1009,15 +1009,11 @@ theorem ff_non_termination (X : ℝ) (hX : X > 2) :
     -- Step 2: Show the geometric series limit equals ffFlowLimit = 2 + √5
     -- i.e. 1 + 2ρ·(1-ρ)⁻¹ = 2 + √5, using ρ = (√5-1)/2
     have h5 : Real.sqrt 5 ^ 2 = 5 := Real.sq_sqrt (by norm_num)
-    have h_lim_eq : (1 + (2 * ρ) * (1 - ρ)⁻¹) = ffFlowLimit := by
+    have h_lim_eq : ffFlowLimit = (1 + (2 * ρ) * (1 - ρ)⁻¹) := by
       unfold ffFlowLimit ρ
-      -- The denominator 1 - (√5-1)/2 = (3-√5)/2 is nonzero since √5 ≠ 3
-      have h_ne : (1 : ℝ) - (Real.sqrt 5 - 1) / 2 ≠ 0 := by
-        intro h; nlinarith
-      field_simp [h_ne]
       grind
     -- Step 3: Combine to get the desired convergence
-    rw [h_eq, ← h_lim_eq]
+    rw [h_eq, h_lim_eq]
     exact explicitFlowSum_converges
   · -- For any maximum flow F, its value is ≥ 2X+1 > 5 > ffFlowLimit
     intro F hF
