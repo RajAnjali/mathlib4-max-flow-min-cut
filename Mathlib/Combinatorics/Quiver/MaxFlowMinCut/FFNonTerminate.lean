@@ -973,8 +973,9 @@ lemma explicitFlowSum_even_tendsto :
       (fun M => explicitFlowSum (2 * M)) := by
     filter_upwards [eventually_gt_atTop 0] with M hM
     exact (explicitFlowSum_even M hM).symm
-  simpa using h_shift.add
-    (tendsto_pow_atTop_nhds_zero_of_lt_one ρ_pos.le ρ_lt_1) |>.congr' h_sum
+  have h := h_shift.add (tendsto_pow_atTop_nhds_zero_of_lt_one ρ_pos.le ρ_lt_1)
+  rw [add_zero] at h
+  exact h.congr' h_sum
 
 /-- The full sequence converges, by combining the even and odd subsequences -/
 lemma explicitFlowSum_converges :
