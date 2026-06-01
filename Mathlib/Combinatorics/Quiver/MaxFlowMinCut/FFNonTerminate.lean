@@ -725,20 +725,6 @@ noncomputable def ffFlowValues (X : ℝ) (hX : X > 2) : ℕ → ℝ :=
     1 + ∑ i=1..∞ 2ρ^i = 2/(1-ρ) - 1 = 2 + √5 = 4.236... -/
 noncomputable def ffFlowLimit : ℝ := 2 + Real.sqrt 5
 
-lemma geom_series_eval : (∑' i : ℕ, 2 * ρ ^ (i + 1)) = (2 * ρ) * (1 - ρ)⁻¹ := by
-  -- Rewrite ρ^(i+1) as ρ * ρ^i to isolate the exponent i
-  have h_rewrite : (fun (i : ℕ) => 2 * ρ ^ (i + 1)) = fun i => (2 * ρ) * ρ ^ i := by
-    ring_nf
-  rw [h_rewrite]
-  -- Pull the constant (2 * ρ) out
-  rw [tsum_mul_left]
-  -- Apply the standard geometric series formula for ρ < 1
-  have h_geom : (∑' i : ℕ, ρ ^ i) = (1 - ρ)⁻¹ := by
-    apply tsum_geometric_of_lt_one
-    · exact ρ_pos.le
-    · exact ρ_lt_1
-  rw [h_geom]
-
 lemma ffFlowLimit_lt_five : ffFlowLimit < 5 := by
   unfold ffFlowLimit
   have : Real.sqrt 5 < 3 := by
@@ -967,7 +953,7 @@ lemma geom_hasSum : HasSum (fun m : ℕ => 2 * ρ ^ (m + 1)) ((2 * ρ) * (1 - ρ
 lemma explicitFlowSum_odd_tendsto :
     Tendsto (fun M : ℕ => explicitFlowSum (2 * M + 1)) atTop
       (𝓝 (1 + (2 * ρ) * (1 - ρ)⁻¹)) := by
-  simp_rw [explicitFlowSum_odd]
+  simp only [explicitFlowSum_odd]
   exact tendsto_const_nhds.add geom_hasSum.tendsto_sum_nat
 
 /-- Even-indexed partial sums have the same limit (they lag by ρ^M → 0) -/
