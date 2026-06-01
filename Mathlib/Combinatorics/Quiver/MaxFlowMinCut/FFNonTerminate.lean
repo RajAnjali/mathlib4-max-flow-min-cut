@@ -900,12 +900,6 @@ theorem expectedFlowValues_eq_explicitFlowSum (X : ℝ) (hX : X > 2) (n : ℕ) :
     -- Substitute our term-by-term lemma
     rw [rawBottleneck_eq_explicitBottleneck X hX n]
 
-/-- Helper lemma: Peels off the last 2 elements of the sum cleanly -/
-lemma sum_peel_2 (f : ℕ → ℝ) (k : ℕ) :
-    ∑ i ∈ Finset.range (k + 2), f i =
-    (∑ i ∈ Finset.range k, f i) + f k + f (k + 1) := by
-  rw [Finset.sum_range_succ, Finset.sum_range_succ]
-
 /-- The partial sum N = 2M + 1 exactly equals 1 + 2 * sum_{i=1}^M ρ^i -/
 lemma explicitFlowSum_odd (M : ℕ) :
     explicitFlowSum (2 * M + 1) = 1 + ∑ i ∈ Finset.range M, (2 * ρ ^ (i + 1)) := by
@@ -918,7 +912,7 @@ lemma explicitFlowSum_odd (M : ℕ) :
     have h_idx : 2 * (M + 1) + 1 = (2 * M + 1) + 2 := by omega
     -- Unfold explicitFlowSum and peel off the last two terms
     unfold explicitFlowSum
-    rw [h_idx, sum_peel_2]
+    rw [h_idx, Finset.sum_range_succ, Finset.sum_range_succ]
     -- Fold the earlier terms back into explicitFlowSum
     have h_fold : (∑ i ∈ Finset.range (2 * M + 1), explicitBottleneck i) =
       explicitFlowSum (2 * M + 1) := rfl
@@ -963,96 +957,50 @@ lemma explicitFlowSum_even (M : ℕ) (hM : M > 0) :
   have h_div : (2 * M - 1 + 1) / 2 = M := by omega
   rw [h_div]
 
-/-- Helper lemma: Prove the geometric series is summable -/
-lemma geom_series_summable : Summable (fun (i : ℕ) => 2 * ρ ^ (i + 1)) := by
-  -- Isolate the exponent i by rewriting ρ^(i+1) as ρ * ρ^i
-  have h_rewrite : (fun (i : ℕ) => 2 * ρ ^ (i + 1)) = fun i => (2 * ρ) * ρ ^ i := by
-    ext i
-    ring
-  rw [h_rewrite]
-  -- A constant multiplied by a summable sequence is summable
-  apply Summable.mul_left
-  -- The core geometric series is summable because 0 ≤ ρ < 1
-  apply summable_geometric_of_lt_one ρ_pos.le ρ_lt_1
+/-- The geometric series sums to its standard closed form -/
+lemma geom_hasSum : HasSum (fun m : ℕ => 2 * ρ ^ (m + 1)) ((2 * ρ) * (1 - ρ)⁻¹) := by
+  have : (fun i : ℕ => 2 * ρ ^ (i + 1)) = fun i => (2 * ρ) * ρ ^ i := by ext i; ring
+  rw [this]
+  exact (hasSum_geometric_of_lt_one ρ_pos.le ρ_lt_1).mul_left (2 * ρ)
 
-/-- The convergence of the odd-indexed partial sums -/
+/-- Odd-indexed partial sums converge to the limit -/
 lemma explicitFlowSum_odd_tendsto :
-    Tendsto (fun M => explicitFlowSum (2 * M + 1)) atTop (𝓝 (1 + (2 * ρ) * (1 - ρ)⁻¹)) := by
-  -- Rewrite the target using your exact odd sum formula
-  simp only [explicitFlowSum_odd]
-  -- Extract the HasSum property (which is definitionally a Tendsto)
-  have h_hasSum := geom_series_summable.hasSum
-  -- Substitute the exact evaluated tsum value from your earlier lemma
-  rw [geom_series_eval] at h_hasSum
-  -- Convert HasSum (which operates on generalized sets) to a Tendsto over Nat ranges
-  have h_tendsto := HasSum.tendsto_sum_nat h_hasSum
-  -- The limit of (1 + sum) is the limit of the sum plus 1
-  exact Tendsto.add tendsto_const_nhds h_tendsto
+    Tendsto (fun M : ℕ => explicitFlowSum (2 * M + 1)) atTop
+      (𝓝 (1 + (2 * ρ) * (1 - ρ)⁻¹)) := by
+  simp_rw [explicitFlowSum_odd]
+  exact tendsto_const_nhds.add geom_hasSum.tendsto_sum_nat
 
-/-- Given that the 2M-1 sequence converges to L, the 2M sequence converges to L as well. -/
-lemma explicitFlowSum_even_tendsto {L : ℝ}
-    (h_prev : Tendsto (fun M => explicitFlowSum (2 * M - 1)) atTop (𝓝 L)) :
-    Tendsto (fun M => explicitFlowSum (2 * M)) atTop (𝓝 L) := by
-  -- 1. Prove ρ ^ M converges to 0 as M -> ∞
-  have h_rho : Tendsto (fun M => ρ ^ M) atTop (𝓝 0) := by
-    exact tendsto_pow_atTop_nhds_zero_of_lt_one ρ_pos.le ρ_lt_1
-  -- 2. Add the two limits together: L + 0 = L
-  have h_add := Tendsto.add h_prev h_rho
-  rw [add_zero] at h_add
-  -- 3. Show that the known expression is eventually equal to the target expression.
-  -- We use `.symm` to place our target function on the RHS.
-  have h_eq : (fun M => explicitFlowSum (2 * M - 1) + ρ ^ M)
-      =ᶠ[atTop] (fun M => explicitFlowSum (2 * M)) := by
+/-- Even-indexed partial sums have the same limit (they lag by ρ^M → 0) -/
+lemma explicitFlowSum_even_tendsto :
+    Tendsto (fun M : ℕ => explicitFlowSum (2 * M)) atTop
+      (𝓝 (1 + (2 * ρ) * (1 - ρ)⁻¹)) := by
+  have h_odd := explicitFlowSum_odd_tendsto
+  have h_shift : Tendsto (fun M : ℕ => explicitFlowSum (2 * M - 1)) atTop
+      (𝓝 (1 + (2 * ρ) * (1 - ρ)⁻¹)) := by
+    rw [Metric.tendsto_atTop] at h_odd ⊢
+    intro ε hε
+    rcases h_odd ε hε with ⟨N, hN⟩
+    exact ⟨N + 1, fun m hm => by
+      rw [show 2 * m - 1 = 2 * (m - 1) + 1 from by omega]
+      exact hN (m - 1) (by omega)⟩
+  have h_sum : (fun M => explicitFlowSum (2 * M - 1) + ρ ^ M) =ᶠ[atTop]
+      (fun M => explicitFlowSum (2 * M)) := by
     filter_upwards [eventually_gt_atTop 0] with M hM
     exact (explicitFlowSum_even M hM).symm
-  -- 4. Substitute the eventual equality into our target limit
-  exact Tendsto.congr' h_eq h_add
+  simpa using h_shift.add
+    (tendsto_pow_atTop_nhds_zero_of_lt_one ρ_pos.le ρ_lt_1) |>.congr' h_sum
 
-/-- Shifting the odd sequence index by 1 preserves its limit. -/
-lemma explicitFlowSum_odd_minus_one_tendsto {L : ℝ}
-    (h_odd : Tendsto (fun M => explicitFlowSum (2 * M + 1)) atTop (𝓝 L)) :
-    Tendsto (fun M => explicitFlowSum (2 * M - 1)) atTop (𝓝 L) := by
-  rw [Metric.tendsto_atTop] at *
-  intro ε hε
-  rcases h_odd ε hε with ⟨N, hN⟩
-  use N + 1
-  intro m hm
-  have h_m : m - 1 ≥ N := by omega
-  have h_eq : 2 * m - 1 = 2 * (m - 1) + 1 := by omega
-  rw [h_eq]
-  exact hN (m - 1) h_m
-
-/-- Combining the even and odd limits to prove the entire sequence converges to L. -/
-lemma explicitFlowSum_tendsto_of_even_odd {L : ℝ}
-    (h_odd : Tendsto (fun M => explicitFlowSum (2 * M + 1)) atTop (𝓝 L))
-    (h_even : Tendsto (fun M => explicitFlowSum (2 * M)) atTop (𝓝 L)) :
-    Tendsto explicitFlowSum atTop (𝓝 L) := by
-  rw [Metric.tendsto_atTop] at *
-  intro ε hε
-  rcases h_even ε hε with ⟨Ne, hNe⟩
-  rcases h_odd ε hε with ⟨No, hNo⟩
-  -- Choose a ceiling index that satisfies both bounds
-  use max (2 * Ne) (2 * No + 1)
-  intro n hn
-  rcases Nat.even_or_odd n with ⟨m, rfl⟩ | ⟨m, rfl⟩
-  · -- Case 1: n is even (m + m)
-    have hm : m ≥ Ne := by omega
-    -- Change the goal's (m + m) safely into (2 * m) so it matches hNe
-    rw [← two_mul]
-    exact hNe m hm
-  · -- Case 2: n is odd (m + m + 1)
-    have hm : m ≥ No := by omega
-    -- Change the goal's (m + m + 1) safely into (2 * m + 1) so it matches hNo
-    simp only [gt_iff_lt]
-    exact hNo m hm
-
-/-- The final master theorem putting it all together for your specific Ford-Fulkerson limit -/
+/-- The full sequence converges, by combining the even and odd subsequences -/
 lemma explicitFlowSum_converges :
     Tendsto explicitFlowSum atTop (𝓝 (1 + (2 * ρ) * (1 - ρ)⁻¹)) := by
-  have h_odd := explicitFlowSum_odd_tendsto
-  have h_minus_1 := explicitFlowSum_odd_minus_one_tendsto h_odd
-  have h_even := explicitFlowSum_even_tendsto h_minus_1
-  exact explicitFlowSum_tendsto_of_even_odd h_odd h_even
+  rw [Metric.tendsto_atTop]
+  intro ε hε
+  rcases Metric.tendsto_atTop.mp explicitFlowSum_even_tendsto ε hε with ⟨Ne, hNe⟩
+  rcases Metric.tendsto_atTop.mp explicitFlowSum_odd_tendsto ε hε with ⟨No, hNo⟩
+  refine ⟨max (2 * Ne) (2 * No + 1), fun n hn => ?_⟩
+  rcases Nat.even_or_odd n with ⟨m, rfl⟩ | ⟨m, rfl⟩
+  · rw [show m + m = 2 * m from by ring]; exact hNe m (by omega)
+  · exact hNo m (by omega)
 
 /-- Ford-Fulkerson with cycleChoice does not terminate, and the flow values it
     produces converge to ffFlowLimit, which can be made arbitrarily far below
